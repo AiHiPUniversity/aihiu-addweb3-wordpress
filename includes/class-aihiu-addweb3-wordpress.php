@@ -43,19 +43,27 @@ class Aihiu_AddWeb3_WordPress
         //save web3 wallet
         add_action('wp_ajax_aihiu_addweb3_save_wallet_address', array($this, 'save_web3_wallet_address'));
     
+        //action hooks for checking user existence and creating users with wallets
+        add_action('wp_ajax_nopriv_aihiu_addweb3_check_user_exists', array($this, 'check_user_exists'));
+        add_action('wp_ajax_nopriv_aihiu_addweb3_create_user_with_wallet', array($this, 'create_user_with_wallet'));
+
     }
 
     // Function to load assets.
     public function load_assets() 
     {
         // Enqueue front-end CSS
-        wp_enqueue_style('aihiu-addweb3-wordpress-frontend', plugin_dir_url(__FILE__) . 'assets/css/frontend.css');
+        // wp_enqueue_style('aihiu-addweb3-wordpress-frontend', plugin_dir_url(__FILE__) . 'assets/css/frontend.css');
     
         // Enqueue front-end JS
-        wp_enqueue_script('aihiu-addweb3-wordpress-frontend', plugin_dir_url(__FILE__) . 'assets/js/frontend.js', array('jquery'), '1.0.0', true);
+        // wp_enqueue_script('aihiu-addweb3-wordpress-frontend', plugin_dir_url(__FILE__) . 'assets/js/frontend.js', array('jquery'), '1.0.0', true);
     
         // Enqueue web3 wallet connection JS
         wp_enqueue_script('aihiu-addweb3-wordpress-web3-connection', plugin_dir_url(__FILE__) . 'assets/js/web3-connection.js', array('jquery'), '1.0.0', true);
+
+        // Enqueue basic web3 feature extension JS
+        wp_enqueue_script('aihiu-addweb3-wordpress-basic-web3-feature-extension', plugin_dir_url(__FILE__) . 'assets/js/basic-web3-feature-extension.js', array('jquery', 'ethers'), '1.0.0', true);
+
     }
     
 
@@ -127,8 +135,51 @@ class Aihiu_AddWeb3_WordPress
         </table>
         <?php
     }
-    
-}
+
+    // Function to check if a user exists based on their wallet address
+    public function check_user_exists() {
+        check_ajax_referer('aihiu_addweb3_wordpress_nonce', 'nonce');
+
+        $wallet_address = isset($_POST['wallet_address']) ? sanitize_text_field($_POST['wallet_address']) : '';
+
+        $user_query = new WP_User_Query(array(
+            'meta_key' => 'web3_wallet_address',
+            'meta_value' => $wallet_address,
+        ));
+
+        $users_found = count($user_query->get_results()) > 0;
+
+        wp_send_json_success(array('exists' => $users_found));
+    }
+
+    // Function to create a new user with a linked wallet address
+    public function create_user_with_wallet() {
+        check_ajax_referer('aihiu_addweb3_wordpress_nonce', 'nonce');
+
+        $wallet_address = isset($_POST['wallet_address']) ? sanitize_text_field($_POST['wallet_address']) : '';
+
+        // Generate a random username based on the wallet address
+        $username = 'web3_user_' . substr($wallet_address, 2, 8);
+
+        // Create a new user account
+        $user_id = wp_create_user($username, wp_generate_password(), '');
+
+        if (!is_wp_error($user_id)) {
+            // Save the wallet address to the user's metadata
+            update_user_meta($user_id, 'web3_wallet_address', $wallet_address);
+
+            // Set the user's display name as the wallet address
+            wp_update_user(array(
+                'ID' => $user_id,
+                'display_name' => $wallet_address,
+            ));
+
+            wp_send_json_success(array('created' => true));
+        } else {
+            wp_send_json_error(array('created' => false, 'message' => $user_id->get_error_message()));
+        }
+    }
+
 
 // Instantiate the main plugin class.
 $aihiu_addweb3_wordpress = new Aihiu_AddWeb3_WordPress();
